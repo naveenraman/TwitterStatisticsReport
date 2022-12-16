@@ -20,7 +20,8 @@ public static class App
             .ConfigureServices((ctx, services) =>
             {
                 services.AddLogging();
-                services.AddHttpClient<ITwitterService, TwitterService>();
+                services.AddHttpClient<IStreamService, StreamService>();
+                services.AddSingleton<ITwitterService, TwitterService>();
                 services.AddSingleton<ILoggerService, LoggerService>();
                 services.Configure<Settings>(settings =>
                 {
