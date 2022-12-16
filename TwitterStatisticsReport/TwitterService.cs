@@ -16,7 +16,9 @@ namespace TwitterStatisticsReport
         private readonly string _apiUrl;
         private readonly HttpClient _httpClient;
         private readonly ILoggerService _logger;
-        private const string SampleStreamUrl = "/2/tweets/sample/stream?tweet.fields=created_at";
+        private const string SampleStreamUrl = "/2/tweets/sample/stream?tweet.fields=author_id,referenced_tweets";
+        private static readonly Dictionary<string, int> _hashTags = new Dictionary<string, int>();
+        private static int _Count = 0;
 
         /// <summary>
         /// Twitter Service Constructor
@@ -44,6 +46,7 @@ namespace TwitterStatisticsReport
             {
                 /* Some reason the api call is timing out */
                 //await GetSampleStream(cancellationToken);
+                /* Using curl to get the Twitter Stream */
                 await GetSampleStreamUsingCurl(cancellationToken);
             }
         }
@@ -78,7 +81,7 @@ namespace TwitterStatisticsReport
         {
             if (!cancellationToken.IsCancellationRequested)
             {
-                ProcessStartInfo start = new ProcessStartInfo
+                var start = new ProcessStartInfo
                 {
                     FileName = "curl.exe",
                     Arguments = "\"" + _apiUrl + SampleStreamUrl + "\"" + " -H " + "\"Authorization: Bearer " + _bearerToken + "\"",
@@ -86,16 +89,63 @@ namespace TwitterStatisticsReport
                     RedirectStandardOutput = true
                 };
 
-                using Process? process = Process.Start(start);
-                using StreamReader reader = process!.StandardOutput;
+                using var process = Process.Start(start);
+                using var reader = process!.StandardOutput;
 
                 // Limiting the call to only pull 10 records
-                for (int i = 0; i <= 10; i++)
+                while (!reader.EndOfStream)
                 {
-                    var data = await reader.ReadLineAsync();
-                    Console.Write(JsonConvert.DeserializeObject<object>(data!));
+                    var tweetDto = JsonConvert.DeserializeObject<TwitterDTO>((await reader.ReadLineAsync())!);
+                    if (tweetDto != null)
+                    {
+                        var text = tweetDto.Data.Text;
+                        _Count++;
+                        Console.WriteLine("Total number of tweets received : {0}", _Count);
+                        if (text != null)
+                        {
+                            GetHashTagCount(text);
+                        }
+                    }
                 }
-                _logger.LogInformation("Successfully retrieved Twitter Stream {0}", 10);
+            }
+        }
+
+        /// <summary>
+        /// Get HashTag Count
+        /// </summary>
+        /// <param name="text"></param>
+        private static void GetHashTagCount(string text)
+        {
+            var tokens = text.Split(' ');
+            if (tokens.Length > 0 && tokens != null)
+            {
+                foreach (var token in tokens)
+                {
+                    if (token.StartsWith('#'))
+                    {
+                        var endIndex = token.IndexOf(' ');
+                        if (endIndex == -1)
+                            endIndex = token.Length;
+                        var hashTag = token.Substring(0, endIndex);
+                        if (_hashTags.ContainsKey(hashTag))
+                        {
+                            _hashTags[hashTag] += 1;
+                        }
+                        else
+                        {
+                            _hashTags.Add(hashTag, 1);
+                        }
+                    }
+                }
+            }
+
+            Console.WriteLine("Top 10 Hashtags");
+            var sortedHashTags = (from entry in _hashTags orderby entry.Value descending select entry)
+                .Take(10).ToDictionary(pair => pair.Key, pair => pair.Value);
+            foreach (var sortedHashTag in sortedHashTags)
+            {
+                Console.WriteLine("HashTag: {0}, Count: {1}",
+                    sortedHashTag.Key, sortedHashTag.Value);
             }
         }
     }
