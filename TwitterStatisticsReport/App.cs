@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.Internal;
+using System.Reflection;
 using TwitterStatisticsReport.Interfaces;
 using TwitterStatisticsReport.Models;
 
@@ -16,29 +17,26 @@ public static class App
 
         // create Host and Run
         await Host.CreateDefaultBuilder()
-                .ConfigureServices((ctx, services) =>
+            .ConfigureServices((ctx, services) =>
+            {
+                services.AddLogging();
+                services.AddHttpClient<ITwitterService, TwitterService>();
+                services.AddSingleton<ILoggerService, LoggerService>();
+                services.Configure<Settings>(settings =>
                 {
-                    services.Configure<HostOptions>(hostOptions =>
-                    {
-                        hostOptions.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore;
-                    });
-                    services.AddHostedService<TwitterBackgroundService>();
-                    services.AddLogging();
-                    services.AddHttpClient<ITwitterService, TwitterService>();
-                    services.AddSingleton<ILoggerService, LoggerService>();
-                    services.Configure<Settings>(settings =>
-                    {
-                        settings.ApiKey = config["ConsumerKey"];
-                        settings.ApiSecret = config["ConsumerSecret"];
-                        settings.ApiToken = config["AccessToken"];
-                        settings.ApiTokenSecret = config["AccessTokenSecret"];
-                        settings.BearerToken = config["BearerToken"];
-                        settings.ApiUrl = config["ApiUrl"];
-                    });
-                    ctx.Configuration = config;
-                })
-                .Build()
-                .RunAsync();
+                    settings.ApiKey = config["ConsumerKey"];
+                    settings.ApiSecret = config["ConsumerSecret"];
+                    settings.ApiToken = config["AccessToken"];
+                    settings.ApiTokenSecret = config["AccessTokenSecret"];
+                    settings.BearerToken = config["BearerToken"];
+                    settings.ApiUrl = config["ApiUrl"];
+                });
+                ctx.Configuration = config;
+            })
+            .Build()
+            .Services.GetRequiredService<ITwitterService>()
+            .ProcessTweets(CancellationToken.None);
+
     }
 
     private static IConfiguration CreateConfiguration()
